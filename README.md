@@ -43,7 +43,7 @@ sudo cp target/release/rstp /bin/
 
 ## Usage
 
-![Usage](screenshots/rstphelp.png)
+![Usage](screenshots/rsthelp.png)
 
 ---
 
