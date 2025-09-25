@@ -9,8 +9,8 @@ git clone https://github.com/ShadowNetter-Official/rstp
 cd rstp
 echo "done"
 echo "installing..."
-chmod +x rstp
-sudo cp rstp /bin/
+cargo build --release
+sudo cp target/release/rstp /bin/
 echo "done"
 echo
 echo "to uninstall do: "
