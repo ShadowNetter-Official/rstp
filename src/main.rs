@@ -1,99 +1,140 @@
-use std::net::{TcpListener, TcpStream};
-use std::{io::prelude::*, fs, env};
-use colored::*;
+use std::{
+    io::{BufReader, prelude::*},
+    net::{TcpListener, TcpStream},
+};
+use mime_guess::from_path;
+use colored::{Color, Colorize};
 
-fn main() {
-    // gets user input
-    let args: Vec<String> = env::args().collect();
-    if args.len() > 1   {
-        ok(args);
-    } else {
+#[derive (Debug)]
+struct Request {
+    method: String,
+    path: String,
+}
+
+fn cla() -> (String, bool) {
+    let mut verbose = false;
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
         help();
+        std::process::exit(1);
     }
-
+    if args.len() == 3 {
+        match &args[2] as &str {
+            "-v" | "--verbose" => verbose = true,
+            _ => ()
+        }
+    }
+    return (args[1].clone(), verbose);
 }
 
 fn help() {
-    println!("rstp | a simple HTTP server written in Rust 🦀");
-    println!("");
-    println!("usage:");
-    println!("");
-    println!("rstp <file> <port>");
+    println!("rstp | a simple HTTP server written in Rust 🦀\n");
+    println!("usage:\n");
+    println!("rstp <port>               | starts server on given port");
+    println!("rstp <port> -v, --verbose | starts server on given port and displays extra information\n");
 }
 
-fn ok(args: Vec<String>) {
-    // colors
+fn main() {
+    let (port, verbose) = cla();
+    let listener = match TcpListener::bind(format!("127.0.0.1:{port}")) {
+        Ok(listener) => listener,
+        Err(e) => {
+            println!("error initializing listener at 127.0.0.1:{port}");
+            println!("{e}");
+            std::process::exit(1);
+        }
+    };
     let d_yellow = Color::TrueColor { r:255, g:242, b:102 };
     let br_yellow = Color::TrueColor {r:250, g:246, b:202 };
-    // checks default file
-    match fs::read_to_string(&args[1]) {
-        Ok(file) => {
-            // attempts to initialize server
-            let server = match TcpListener::bind(format!("127.0.0.1:{}", &args[2])) {
-                Ok(server) => {
-                    println!("{} {} {} {}", "running server on:".color(d_yellow), "127.0.0.1".color(br_yellow), "on port:".color(d_yellow), &args[2].color(br_yellow));
-                    println!("");
-                    server
-                },
-                Err(_) => {
-                    println!("Error with server port");
-                    help();
-                    return;
-                }
-            };
-
-            for connection in server.incoming() {
-                match connection {
-                    Ok(connection) => {
-                        handle_connection(connection, &file);
-                    }
-                    Err(e) => {
-                        println!("Encountered an error while handling connection: {}", e);
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            println!("Encountered an error while handling file: {}", e);
-            help();
-        }
+    println!("{} {} {} {}\n", "running server on:".color(d_yellow), "127.0.0.1".color(br_yellow), "on port:".color(d_yellow), port.color(br_yellow));
+    for connection in listener.incoming() {
+        let mut connection = connection.unwrap();
+        let request = handle_connection(connection.try_clone().expect("Error reading connection"));
+        let (file, body, mtype) = parse(&request.path);
+        let ip = match connection.peer_addr() {
+            Ok(addr) => addr.ip().to_string(),
+            Err(_) => "unavailable".to_string()
+        };
+        let header = "HTTP/1.1 200 OK\r\n";
+        let rmtype = format!("Content-Type: {mtype}\r\n");
+        let len = format!("Content-Length: {}\r\n", body.len());
+        let response = format!("{header}{rmtype}{len}\r\n");
+        display(&request, &file, &mtype, ip, verbose);
+        connection.write(response.as_bytes()).unwrap();
+        connection.write_all(&body).unwrap();
+        connection.flush().unwrap();
     }
 }
 
-fn handle_connection(mut stream: TcpStream, defaultfile: &String) {
-    // takes inbound connections and gets requested file, method, host
-    // and converts them for use
-    let mut buffer = [0; 1024];
-    let buf = stream.read(&mut buffer).unwrap();
-    let buf_str = String::from_utf8_lossy(&buffer[..buf]);
-    let buf_vec: Vec<&str> = buf_str.split_whitespace().collect();
-    let requested_file = &buf_vec[1];
-    let method = &buf_vec[0];
-    let host = buf_vec[4];
-    // displays connection information in terminal
-    let br_yellow = Color::TrueColor { r: 250, g: 246, b: 202};
-    let d_yellow = Color::TrueColor { r: 255, g: 242, b: 102};
-    println!("{}", "Received Connection:".color(d_yellow));
-    println!("{} {}", "Host:".color(d_yellow), host.color(br_yellow));
-    println!("{} {}", "Method:".color(d_yellow), method.color(br_yellow));
-    println!("{} {}", "Requested File:".color(d_yellow), requested_file.color(br_yellow));
-    println!("");
-    let filtered_file = &requested_file[1..];
-    let header = "HTTP/1.1 200 OK\r\n\r\n";
-    let file = if *requested_file == "/" {
-        defaultfile.clone()
-    } else {
-        let f = match fs::read_to_string(filtered_file) {
-            Ok(f) => f,
-            Err(_) => defaultfile.clone()
+fn handle_connection(stream: TcpStream) -> Request {
+    let buf_reader = BufReader::new(&stream);
+    let http_request: Vec<_> = buf_reader
+        .lines()
+        .map(|result| result.unwrap())
+        .take_while(|line| !line.is_empty())
+        .collect();
+    if http_request.len() < 1 {
+        let output: Request = Request {
+            method: "GET".to_string(),
+            path: "/error.html".to_string()
         };
-        f
+        return output;
+    }
+    let mut m: String = String::new();
+    for i in http_request[0].chars() {
+        if i == ' ' { break; }
+        m.push(i);
+    }
+    let mut p: String = String::new();
+    for i in http_request[0][(m.len() + 1)..].chars() {
+        if i == ' ' { break; }
+        p.push(i);
+    }
+    let output: Request = Request {
+        method: m,
+        path: p,
     };
-    let response = format!(
-        "{} {}",
-        header,
-        file
-    );
-    stream.write(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
+    return output;
+}
+
+fn display(input: &Request, file: &str, mt: &str, ip: String, verbose: bool) {
+    let d_yellow = Color::TrueColor { r:255, g:242, b:102 };
+    let br_yellow = Color::TrueColor {r:250, g:246, b:202 };
+    println!("{}", "Received Connection:".color(d_yellow));
+    print!("{}: {}\n", "From".color(d_yellow), ip.color(br_yellow));
+    print!("{}: {}\n", "Method".color(d_yellow), input.method.color(br_yellow));
+    print!("{}: {}\n", "Requested Path".color(d_yellow), input.path.color(br_yellow));
+    if verbose {
+        print!("{}: {}\n", "Given Path".color(d_yellow), file.color(br_yellow));
+        print!("{}: {}\n", "MIME Type".color(d_yellow), mt.color(br_yellow));
+    }
+    println!();
+}
+
+fn parse(path: &str) -> (String, Vec<u8>, String){
+    let mut file: String = String::new();
+    if path == "/" { file.push_str("index.html"); }
+    else {
+        for i in path.chars() {
+            if i == '/' { continue; }
+            file.push(i);
+        }
+    }
+    let output = match std::fs::read(&file) {
+        Ok(output) => output,
+        Err(_) => {
+            let error = match std::fs::read("error.html") {
+                Ok(error) => error,
+                Err(_) => {
+                    let m: &[u8] = b"There was an error processing your request";
+                    let vec: Vec<u8> = m.to_vec();
+                    file = "error.html".to_string();
+                    vec
+                }
+            };
+            error
+        },
+    };
+    let mimetype = from_path(&file).first_or_octet_stream();
+    return (file, output, mimetype.to_string());
 }

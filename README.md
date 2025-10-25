@@ -45,6 +45,9 @@ sudo cp target/release/rstp /bin/
 
 ![Usage](screenshots/rsthelp.png)
 
+
+rstp uses index.html as the root file, and optionally, uses error.html for all invalid requests.
+
 ---
 
 ## Removing
