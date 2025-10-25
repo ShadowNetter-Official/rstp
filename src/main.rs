@@ -86,10 +86,11 @@ fn handle_connection(stream: TcpStream) -> Request {
         m.push(i);
     }
     let mut p: String = String::new();
-    for i in http_request[0][(m.len() + 1)..].chars() {
+    for i in http_request[0][(m.len() + 2)..].chars() {
         if i == ' ' { break; }
         p.push(i);
     }
+    if p == " " { p = "index.html".to_string(); }
     let output: Request = Request {
         method: m,
         path: p,
@@ -112,14 +113,8 @@ fn display(input: &Request, file: &str, mt: &str, ip: String, verbose: bool) {
 }
 
 fn parse(path: &str) -> (String, Vec<u8>, String){
-    let mut file: String = String::new();
-    if path == "/" { file.push_str("index.html"); }
-    else {
-        for i in path.chars() {
-            if i == '/' { continue; }
-            file.push(i);
-        }
-    }
+    //let mut file: String = String::new();
+    let mut file = path.to_string();
     let output = match std::fs::read(&file) {
         Ok(output) => output,
         Err(_) => {
