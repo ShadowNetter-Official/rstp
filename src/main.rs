@@ -60,9 +60,9 @@ fn main() {
         let len = format!("Content-Length: {}\r\n", body.len());
         let response = format!("{header}{rmtype}{len}\r\n");
         display(&request, &file, &mtype, ip, verbose);
-        connection.write(response.as_bytes()).unwrap();
-        connection.write_all(&body).unwrap();
-        connection.flush().unwrap();
+        let _ = connection.write(response.as_bytes());
+        let _ = connection.write_all(&body);
+        let _ = connection.flush();
     }
 }
 
