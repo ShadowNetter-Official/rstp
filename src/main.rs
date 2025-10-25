@@ -90,7 +90,7 @@ fn handle_connection(stream: TcpStream) -> Request {
         if i == ' ' { break; }
         p.push(i);
     }
-    if p == " " { p = "index.html".to_string(); }
+    if p.trim() == "" { p = "index.html".to_string(); }
     let output: Request = Request {
         method: m,
         path: p,
