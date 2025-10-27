@@ -113,7 +113,6 @@ fn display(input: &Request, file: &str, mt: &str, ip: String, verbose: bool) {
 }
 
 fn parse(path: &str) -> (String, Vec<u8>, String){
-    //let mut file: String = String::new();
     let mut file = path.to_string();
     let output = match std::fs::read(&file) {
         Ok(output) => output,
@@ -123,10 +122,10 @@ fn parse(path: &str) -> (String, Vec<u8>, String){
                 Err(_) => {
                     let m: &[u8] = b"There was an error processing your request";
                     let vec: Vec<u8> = m.to_vec();
-                    file = "error.html".to_string();
                     vec
                 }
             };
+            file = "error.html".to_string();
             error
         },
     };
