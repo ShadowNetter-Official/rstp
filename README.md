@@ -1,5 +1,7 @@
 # rstp
 
+⚠️ This repo is undergoing bug fixes, I don't recommend using this project for now ⚠️
+
 A simple HTTP server written in **Rust** 🦀
 
 ---
